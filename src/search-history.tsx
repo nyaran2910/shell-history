@@ -7,9 +7,15 @@ import { findFzf, resultLimit, searchHistory } from "./fzf";
 import { historyFile, loadHistory } from "./history";
 import { readRecent, recentKey, rememberRun } from "./recent";
 import { loadSettings, type Settings } from "./settings";
-import { runInTerminal } from "./terminal";
+import { openInTerminal } from "./terminal";
 
 const runShortcut: Keyboard.Shortcut = { modifiers: ["cmd"], key: "return" };
+const selectHistoryShortcut: Keyboard.Shortcut = { modifiers: ["ctrl"], key: "b" };
+const inputId = "input";
+
+function historyId(command: string) {
+  return `history:${command}`;
+}
 
 function EditMultilineCommand({ command, run }: { command: string; run: (text: string) => Promise<boolean> }) {
   return (
@@ -48,6 +54,7 @@ export default function SearchShellHistory() {
   const [binary, setBinary] = useState<{ path?: string; error?: string }>();
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<string>();
+  const [selectedId, setSelectedId] = useState(inputId);
   const [result, setResult] = useState<{ query: string; commands: string[]; error?: string }>();
   const [loadError, setLoadError] = useState<string>();
   const running = useRef(false);
@@ -117,6 +124,7 @@ export default function SearchShellHistory() {
   }, [inputs, search, binary?.path, editing]);
 
   function handleTextChange(text: string) {
+    setSelectedId(inputId);
     if (!editing) {
       setQuery(text);
     } else if (text) {
@@ -132,23 +140,24 @@ export default function SearchShellHistory() {
   const commands = search ? result?.commands ?? inputs?.initial : inputs?.initial;
   const loading = !error && !editing && (!inputs || Boolean(inputs.initial.length && search && !current));
 
-  async function run(command: string) {
+  async function openCommand(command: string, execute: boolean) {
     if (running.current || !command.trim()) return false;
     running.current = true;
     try {
-      await runInTerminal(command, history?.shellPath, history?.terminalApp);
+      await openInTerminal(command, execute, history?.shellPath, history?.terminalApp);
     } catch (error) {
       running.current = false;
-      await showToast({ style: Toast.Style.Failure, title: "Could Not Run Command", message: (error as Error).message });
+      await showToast({ style: Toast.Style.Failure, title: "Could Not Open Command", message: (error as Error).message });
       return false;
     }
     try {
-      if (history && !command.startsWith(" ")) {
+      if (execute && history && !command.startsWith(" ")) {
         await rememberRun(history.recentKey, command).then(setRecent).catch((error: unknown) => {
           console.error("Could not save the recently run command", error);
         });
       }
       setDraft(undefined);
+      setSelectedId(inputId);
       await closeMainWindow();
       return true;
     } finally {
@@ -157,44 +166,61 @@ export default function SearchShellHistory() {
   }
 
   const rows = useMemo(() => commands?.map((command) => ({
+    id: historyId(command),
     command,
     title: command.replace(/\n/g, " ↵ "),
     multiline: /[\r\n]/.test(command),
   })), [commands]);
+  const firstHistoryId = rows?.[0]?.id;
+  const text = draft ?? query;
 
   return (
     <List
       searchBarPlaceholder={editing ? "Edit command…" : "Search shell history…"}
-      searchText={draft ?? query}
+      searchText={text}
       onSearchTextChange={handleTextChange}
+      selectedItemId={rows?.some(({ id }) => id === selectedId) ? selectedId : inputId}
+      onSelectionChange={(id) => setSelectedId(id ?? inputId)}
       filtering={false}
       isLoading={loading}
     >
-      {!rows?.length && (
-        <List.EmptyView
-          icon={error ? Icon.ExclamationMark : Icon.Terminal}
-          title={error ? "Could Not Search Shell History" : loading ? "Searching…" : search && inputs?.initial.length ? "No Matching Commands" : "History Is Empty"}
-          description={error}
-          actions={
-            <ActionPanel>
-              <Action title="Open Extension Settings" icon={Icon.Gear} onAction={openExtensionPreferences} />
-            </ActionPanel>
-          }
-        />
-      )}
-      {rows?.map(({ command, title, multiline }) => (
+      <List.Item
+        id={inputId}
+        icon={error ? Icon.ExclamationMark : Icon.Terminal}
+        title={text || "Type a Command"}
+        subtitle={error ?? (text ? "Current Input" : undefined)}
+        actions={
+          <ActionPanel>
+            {text.trim() && (
+              <>
+                <Action title="Open in Terminal" icon={Icon.Terminal} onAction={() => openCommand(text, false)} />
+                <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => openCommand(text, true)} />
+              </>
+            )}
+            {firstHistoryId && (
+              <Action title="Select First History Result" shortcut={selectHistoryShortcut} onAction={() => setSelectedId(firstHistoryId)} />
+            )}
+            <Action title="Open Extension Settings" icon={Icon.Gear} onAction={openExtensionPreferences} />
+          </ActionPanel>
+        }
+      />
+      {rows?.map(({ id, command, title, multiline }) => (
         <List.Item
-          key={command}
+          key={id}
+          id={id}
           icon={Icon.Terminal}
           title={title}
           actions={
             <ActionPanel>
               {multiline ? (
-                <Action.Push title="Edit Multiline Command" icon={Icon.Pencil} target={<EditMultilineCommand command={command} run={run} />} />
+                <Action.Push title="Edit Multiline Command" icon={Icon.Pencil} target={<EditMultilineCommand command={command} run={(text) => openCommand(text, true)} />} />
               ) : (
-                <Action title="Complete Command" icon={Icon.Pencil} onAction={() => setDraft(command)} />
+                <Action title="Complete Command" icon={Icon.Pencil} onAction={() => {
+                  setDraft(command);
+                  setSelectedId(inputId);
+                }} />
               )}
-              <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => run(draft ?? command)} />
+              <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => openCommand(command, true)} />
             </ActionPanel>
           }
         />

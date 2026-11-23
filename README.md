@@ -1,6 +1,10 @@
 # Shell History
 
-Search your shell history in Raycast with fzf. Open **Search Shell History**, type a fuzzy query, and press **⌘ Return** to run the selected command. Press **Return** first to edit it in the search bar, then press **⌘ Return** to run the edited text. Clear the bar to start another search. Commands containing line breaks open a multiline editor when edited.
+Search your shell history in Raycast with fzf. The **Current Input** row starts selected and represents the text in the search bar. **Return** opens that text in an editable fish prompt. **⌘ Return** runs it.
+
+Press **Ctrl+B** to select the first history result. From a history result, **Return** completes it into the search bar and **⌘ Return** runs it directly. Commands containing line breaks open a multiline editor when completed. Clear the bar to start another search.
+
+With fish as the execution shell, commands run through the interactive prompt and follow fish's regular history settings. Preloading an editable prompt requires fish. Ghostty may show its own confirmation when opening a command file.
 
 Commands launched from the extension are remembered locally in Raycast. Recent commands that match your search appear first, newest first. Commands starting with a space are omitted from this list, following fish's history convention.
 

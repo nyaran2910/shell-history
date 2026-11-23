@@ -12,13 +12,37 @@ function quoteForSh(value: string) {
   return "'" + value.replace(/'/g, "'\\''") + "'";
 }
 
-export async function runInTerminal(command: string, shellPreference?: string, terminalApp = "system") {
+export async function openInTerminal(
+  command: string,
+  execute: boolean,
+  shellPreference?: string,
+  terminalApp = "system",
+) {
   if (!command.trim() || command.includes("\0")) throw new Error("Enter a valid shell command.");
   const shell = shellPreference ? absolutePath(shellPreference, "Execution Shell") : userInfo().shell;
   if (!shell) throw new Error("Set an Execution Shell in preferences.");
   await access(shell, constants.X_OK).catch(() => {
     throw new Error("The execution shell is not executable.");
   });
+
+  const fish = await exec(shell, ["-c", "builtin status fish-path"], { timeout: 3000 })
+    .then(() => true, () => false);
+  if (!fish && !execute) {
+    throw new Error("Set Execution Shell to fish to open a command for editing.");
+  }
+
+  // Let fish's interactive reader handle the command, including its normal history rules.
+  const init = [
+    "function __raycast_shell_history_prefill --on-event fish_prompt",
+    "  functions --erase __raycast_shell_history_prefill",
+    '  commandline --replace -- "$RAYCAST_SHELL_HISTORY_COMMAND"',
+    "  set --erase RAYCAST_SHELL_HISTORY_COMMAND",
+    execute ? "  commandline --function execute" : "",
+    "end",
+  ].join("\n");
+  const launch = fish
+    ? `export RAYCAST_SHELL_HISTORY_COMMAND=${quoteForSh(command)}\nexec ${quoteForSh(shell)} -il -C ${quoteForSh(init)}`
+    : `exec ${quoteForSh(shell)} -ilc ${quoteForSh(command)}`;
 
   const directory = await mkdtemp(join(tmpdir(), "raycast-shell-history-"));
   const script = join(directory, "Run Shell History.command");
@@ -28,7 +52,7 @@ export async function runInTerminal(command: string, shellPreference?: string, t
       `/bin/rm -f ${quoteForSh(script)}`,
       `/bin/rmdir ${quoteForSh(directory)}`,
       'cd "$HOME" || exit 1',
-      `exec ${quoteForSh(shell)} -ilc ${quoteForSh(command)}`,
+      launch,
       "",
     ].join("\n"), { mode: 0o700, flag: "wx" });
     const args = terminalApp === "system" ? [script] : ["-b", terminalApp, script];
