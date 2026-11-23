@@ -7,6 +7,7 @@ export type HistoryFormat = "fish" | "zsh" | "plain";
 export interface Settings {
   historyPath?: string;
   historyFormat?: HistoryFormat;
+  terminalApp?: string;
   shellPath?: string;
   fzfPath?: string;
 }
@@ -31,11 +32,11 @@ export async function loadSettings(preferences: Settings) {
       Object.values(local).some((value) => typeof value !== "string")) {
     throw new Error("Shell History settings must be a JSON object with string values.");
   }
-  // Raycast supplies the manifest default for the dropdown, so use a local
-  // path default only and keep format selection in Raycast.
+  // Raycast supplies the manifest defaults for the dropdowns.
   return {
     historyPath: preferences.historyPath?.trim() || local.historyPath?.trim(),
     historyFormat: preferences.historyFormat ?? "fish",
+    terminalApp: preferences.terminalApp ?? "system",
     shellPath: preferences.shellPath?.trim() || local.shellPath?.trim(),
     fzfPath: preferences.fzfPath?.trim() || local.fzfPath?.trim(),
   };

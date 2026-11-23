@@ -38,6 +38,20 @@
       ]
     },
     {
+      "name": "terminalApp",
+      "title": "Terminal App",
+      "description": "App used to run commands. macOS Default follows the default app for .command files.",
+      "type": "dropdown",
+      "required": false,
+      "default": "system",
+      "data": [
+        { "title": "macOS Default", "value": "system" },
+        { "title": "Terminal", "value": "com.apple.Terminal" },
+        { "title": "Ghostty", "value": "com.mitchellh.ghostty" },
+        { "title": "iTerm2", "value": "com.googlecode.iterm2" }
+      ]
+    },
+    {
       "name": "shellPath",
       "title": "Execution Shell",
       "description": "Optional absolute path to the shell used to run commands. Defaults to your macOS login shell.",

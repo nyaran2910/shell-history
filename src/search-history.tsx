@@ -34,6 +34,7 @@ interface History {
   commands: string[];
   input: Buffer;
   shellPath?: string;
+  terminalApp: string;
 }
 
 export default function SearchShellHistory() {
@@ -61,6 +62,7 @@ export default function SearchShellHistory() {
             commands: commands.slice(0, resultLimit),
             input: Buffer.from(commands.length ? commands.join("\0") + "\0" : ""),
             shellPath: settings.shellPath,
+            terminalApp: settings.terminalApp,
           });
         }
       } catch (error) {
@@ -105,7 +107,7 @@ export default function SearchShellHistory() {
     if (running.current || !command.trim()) return false;
     running.current = true;
     try {
-      await runInTerminal(command, history?.shellPath);
+      await runInTerminal(command, history?.shellPath, history?.terminalApp);
     } catch (error) {
       await showToast({ style: Toast.Style.Failure, title: "Could Not Run Command", message: (error as Error).message });
       return false;

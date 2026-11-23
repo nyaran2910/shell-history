@@ -12,7 +12,7 @@ function quoteForSh(value: string) {
   return "'" + value.replace(/'/g, "'\\''") + "'";
 }
 
-export async function runInTerminal(command: string, shellPreference?: string) {
+export async function runInTerminal(command: string, shellPreference?: string, terminalApp = "system") {
   if (!command.trim() || command.includes("\0")) throw new Error("Enter a valid shell command.");
   const shell = shellPreference ? absolutePath(shellPreference, "Execution Shell") : userInfo().shell;
   if (!shell) throw new Error("Set an Execution Shell in preferences.");
@@ -31,9 +31,12 @@ export async function runInTerminal(command: string, shellPreference?: string) {
       `exec ${quoteForSh(shell)} -ilc ${quoteForSh(command)}`,
       "",
     ].join("\n"), { mode: 0o700, flag: "wx" });
-    await exec("/usr/bin/open", [script]);
+    const args = terminalApp === "system" ? [script] : ["-b", terminalApp, script];
+    await exec("/usr/bin/open", args);
   } catch {
     await rm(directory, { recursive: true, force: true });
-    throw new Error("Could not open the command in the default terminal.");
+    throw new Error(terminalApp === "system"
+      ? "Could not open the command with the macOS default app for .command files."
+      : "Could not open the command in the selected terminal. Check Terminal App in preferences.");
   }
 }
