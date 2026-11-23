@@ -1,6 +1,8 @@
 # Shell History
 
-Search your shell history in Raycast with fzf. Open **Search Shell History**, type a fuzzy query, and press **Return** to complete the selected command in the search bar. Edit it or append arguments, then press **⌘ Return** to run it. Clear the bar to start another search. Commands containing line breaks open a multiline editor to preserve their syntax.
+Search your shell history in Raycast with fzf. Open **Search Shell History**, type a fuzzy query, and press **⌘ Return** to run the selected command. Press **Return** first to edit it in the search bar, then press **⌘ Return** to run the edited text. Clear the bar to start another search. Commands containing line breaks open a multiline editor when edited.
+
+Commands launched from the extension are remembered locally in Raycast. Recent commands that match your search appear first, newest first. Commands starting with a space are omitted from this list, following fish's history convention.
 
 ## Settings
 

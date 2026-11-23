@@ -4,7 +4,8 @@ import {
 } from "@raycast/api";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { findFzf, resultLimit, searchHistory } from "./fzf";
-import { loadHistory } from "./history";
+import { historyFile, loadHistory } from "./history";
+import { readRecent, recentKey, rememberRun } from "./recent";
 import { loadSettings, type Settings } from "./settings";
 import { runInTerminal } from "./terminal";
 
@@ -32,13 +33,18 @@ function EditMultilineCommand({ command, run }: { command: string; run: (text: s
 
 interface History {
   commands: string[];
-  input: Buffer;
+  recentKey: string;
   shellPath?: string;
   terminalApp: string;
 }
 
+function searchInput(commands: string[]) {
+  return Buffer.from(commands.length ? commands.join("\0") + "\0" : "");
+}
+
 export default function SearchShellHistory() {
   const [history, setHistory] = useState<History>();
+  const [recent, setRecent] = useState<string[]>([]);
   const [binary, setBinary] = useState<{ path?: string; error?: string }>();
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<string>();
@@ -56,11 +62,17 @@ export default function SearchShellHistory() {
           (path) => { if (active) setBinary({ path }); },
           (error: Error) => { if (active) setBinary({ error: error.message }); },
         );
-        const commands = await loadHistory(settings.historyFormat, settings.historyPath);
+        const file = historyFile(settings.historyFormat, settings.historyPath);
+        const key = recentKey(settings.historyFormat, file);
+        const [commands, previousRuns] = await Promise.all([
+          loadHistory(settings.historyFormat, file),
+          readRecent(key).catch(() => []),
+        ]);
         if (active) {
+          setRecent(previousRuns);
           setHistory({
-            commands: commands.slice(0, resultLimit),
-            input: Buffer.from(commands.length ? commands.join("\0") + "\0" : ""),
+            commands,
+            recentKey: key,
             shellPath: settings.shellPath,
             terminalApp: settings.terminalApp,
           });
@@ -74,18 +86,35 @@ export default function SearchShellHistory() {
 
   const search = query.trim();
   const editing = draft !== undefined;
+  const inputs = useMemo(() => {
+    if (!history) return;
+    const previousRuns = new Set(recent);
+    const otherCommands = history.commands.filter((command) => !previousRuns.has(command));
+    return {
+      initial: [...previousRuns, ...otherCommands.slice(0, resultLimit)].slice(0, resultLimit),
+      standard: searchInput(otherCommands),
+      recent: searchInput([...previousRuns]),
+    };
+  }, [history, recent]);
 
   useEffect(() => {
-    if (editing || !history?.input.length || !search || !binary?.path) return;
+    if (editing || !inputs?.initial.length || !search || !binary?.path) return;
     const controller = new AbortController();
-    void searchHistory(binary.path, history.input, search, controller.signal).then(
-      (commands) => { if (!controller.signal.aborted) setResult({ query: search, commands }); },
+    const { signal } = controller;
+    const executable = binary.path;
+    void Promise.all([
+      inputs.recent.length ? searchHistory(executable, inputs.recent, search, signal, true) : [],
+      inputs.standard.length ? searchHistory(executable, inputs.standard, search, signal) : [],
+    ]).then(
+      ([recentMatches, matches]) => {
+        if (!signal.aborted) setResult({ query: search, commands: [...recentMatches, ...matches].slice(0, resultLimit) });
+      },
       (error: Error) => {
         if (!controller.signal.aborted) setResult({ query: search, commands: [], error: error.message });
       },
     );
     return () => controller.abort();
-  }, [history, search, binary?.path, editing]);
+  }, [inputs, search, binary?.path, editing]);
 
   function handleTextChange(text: string) {
     if (!editing) {
@@ -100,8 +129,8 @@ export default function SearchShellHistory() {
 
   const current = result?.query === search ? result : undefined;
   const error = loadError ?? (search ? binary?.error ?? current?.error : undefined);
-  const commands = search ? result?.commands ?? history?.commands : history?.commands;
-  const loading = !error && !editing && (!history || Boolean(history.input.length && search && !current));
+  const commands = search ? result?.commands ?? inputs?.initial : inputs?.initial;
+  const loading = !error && !editing && (!inputs || Boolean(inputs.initial.length && search && !current));
 
   async function run(command: string) {
     if (running.current || !command.trim()) return false;
@@ -109,13 +138,22 @@ export default function SearchShellHistory() {
     try {
       await runInTerminal(command, history?.shellPath, history?.terminalApp);
     } catch (error) {
+      running.current = false;
       await showToast({ style: Toast.Style.Failure, title: "Could Not Run Command", message: (error as Error).message });
       return false;
+    }
+    try {
+      if (history && !command.startsWith(" ")) {
+        await rememberRun(history.recentKey, command).then(setRecent).catch((error: unknown) => {
+          console.error("Could not save the recently run command", error);
+        });
+      }
+      setDraft(undefined);
+      await closeMainWindow();
+      return true;
     } finally {
       running.current = false;
     }
-    await closeMainWindow();
-    return true;
   }
 
   const rows = useMemo(() => commands?.map((command) => ({
@@ -135,7 +173,7 @@ export default function SearchShellHistory() {
       {!rows?.length && (
         <List.EmptyView
           icon={error ? Icon.ExclamationMark : Icon.Terminal}
-          title={error ? "Could Not Search Shell History" : loading ? "Searching…" : search && history?.input.length ? "No Matching Commands" : "History Is Empty"}
+          title={error ? "Could Not Search Shell History" : loading ? "Searching…" : search && inputs?.initial.length ? "No Matching Commands" : "History Is Empty"}
           description={error}
           actions={
             <ActionPanel>
@@ -156,9 +194,7 @@ export default function SearchShellHistory() {
               ) : (
                 <Action title="Complete Command" icon={Icon.Pencil} onAction={() => setDraft(command)} />
               )}
-              {draft !== undefined && (
-                <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => run(draft)} />
-              )}
+              <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => run(draft ?? command)} />
             </ActionPanel>
           }
         />

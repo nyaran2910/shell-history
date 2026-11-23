@@ -31,13 +31,15 @@ export async function findFzf(preference?: string) {
   throw new Error(preference ? "Cannot run the configured fzf executable." : "Install fzf or set FZF Executable in preferences.");
 }
 
-export function searchHistory(executable: string, input: Buffer, query: string, signal: AbortSignal) {
+export function searchHistory(executable: string, input: Buffer, query: string, signal: AbortSignal, newestFirst = false) {
   const env = { ...process.env };
   delete env.FZF_DEFAULT_OPTS;
   delete env.FZF_DEFAULT_OPTS_FILE;
 
   return new Promise<string[]>((resolve, reject) => {
-    const child = spawn(executable, ["--read0", "--print0", "--scheme=history", `--filter=${query}`], { env, signal });
+    const args = ["--read0", "--print0", "--scheme=history", `--filter=${query}`];
+    if (newestFirst) args.push("--no-sort");
+    const child = spawn(executable, args, { env, signal });
     const matches: string[] = [];
     let partial = "";
     let failed = false;

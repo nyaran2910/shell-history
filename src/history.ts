@@ -31,14 +31,17 @@ export function parseHistory(contents: string, format: HistoryFormat) {
   return [...new Set(commands.reverse().filter((command) => command.trim() && !command.includes("\0")))];
 }
 
-export async function loadHistory(format: HistoryFormat, preference?: string) {
+export function historyFile(format: HistoryFormat, preference?: string) {
   const dataHome = process.env.XDG_DATA_HOME || join(homedir(), ".local/share");
   const defaults = {
     fish: join(dataHome, "fish/fish_history"),
     zsh: join(homedir(), ".zsh_history"),
     plain: join(homedir(), ".bash_history"),
   };
-  const path = preference ? absolutePath(preference, "History File") : defaults[format];
+  return preference ? absolutePath(preference, "History File") : defaults[format];
+}
+
+export async function loadHistory(format: HistoryFormat, path: string) {
   let contents: string;
   try {
     contents = await readFile(path, "utf8");
