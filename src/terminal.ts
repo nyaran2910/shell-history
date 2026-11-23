@@ -1,3 +1,4 @@
+import { getDefaultApplication } from "@raycast/api";
 import { execFile } from "node:child_process";
 import { constants } from "node:fs";
 import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -7,9 +8,32 @@ import { promisify } from "node:util";
 import { absolutePath } from "./settings";
 
 const exec = promisify(execFile);
+const ghosttyBundleId = "com.mitchellh.ghostty";
+const ghosttyScript = `
+on run argv
+  tell application id "${ghosttyBundleId}"
+    set cfg to new surface configuration from {command:(item 1 of argv)}
+    activate
+    new window with configuration cfg
+  end tell
+end run
+`;
 
 function quoteForSh(value: string) {
   return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
+async function openGhostty(script: string) {
+  try {
+    // Pass the path separately from the AppleScript source.
+    await exec("/usr/bin/osascript", ["-e", ghosttyScript, `/bin/sh ${quoteForSh(script)}`]);
+  } catch (error) {
+    const stderr = (error as { stderr?: string }).stderr ?? "";
+    if (/\(-174[34]\)/.test(stderr)) {
+      throw new Error("Allow Raycast to control Ghostty in System Settings → Privacy & Security → Automation.");
+    }
+    throw new Error("Could not open a Ghostty window. Ghostty 1.3 or newer with AppleScript enabled is required.");
+  }
 }
 
 export async function openInTerminal(
@@ -55,12 +79,21 @@ export async function openInTerminal(
       launch,
       "",
     ].join("\n"), { mode: 0o700, flag: "wx" });
-    const args = terminalApp === "system" ? [script] : ["-b", terminalApp, script];
-    await exec("/usr/bin/open", args);
-  } catch {
+    const target = terminalApp === "system"
+      ? (await getDefaultApplication(script).catch(() => undefined))?.bundleId
+      : terminalApp;
+    if (target === ghosttyBundleId) {
+      await openGhostty(script);
+    } else {
+      const args = terminalApp === "system" ? [script] : ["-b", terminalApp, script];
+      await exec("/usr/bin/open", args).catch(() => {
+        throw new Error(terminalApp === "system"
+          ? "Could not open the command with the macOS default app for .command files."
+          : "Could not open the command in the selected terminal. Check Terminal App in preferences.");
+      });
+    }
+  } catch (error) {
     await rm(directory, { recursive: true, force: true });
-    throw new Error(terminalApp === "system"
-      ? "Could not open the command with the macOS default app for .command files."
-      : "Could not open the command in the selected terminal. Check Terminal App in preferences.");
+    throw error;
   }
 }
