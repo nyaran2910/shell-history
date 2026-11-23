@@ -31,7 +31,7 @@ export async function findFzf(preference?: string) {
   throw new Error(preference ? "Cannot run the configured fzf executable." : "Install fzf or set FZF Executable in preferences.");
 }
 
-export function searchHistory(executable: string, input: string, query: string, signal: AbortSignal) {
+export function searchHistory(executable: string, input: Buffer, query: string, signal: AbortSignal) {
   const env = { ...process.env };
   delete env.FZF_DEFAULT_OPTS;
   delete env.FZF_DEFAULT_OPTS_FILE;
@@ -47,6 +47,7 @@ export function searchHistory(executable: string, input: string, query: string, 
       const records = (partial + chunk).split("\0");
       partial = records.pop() ?? "";
       matches.push(...records.slice(0, resultLimit - matches.length));
+      if (matches.length === resultLimit) child.kill();
     });
     child.stderr.resume();
     child.stdin.on("error", (error: NodeJS.ErrnoException) => {
@@ -54,7 +55,7 @@ export function searchHistory(executable: string, input: string, query: string, 
     });
     child.once("error", reject);
     child.once("close", (code) => {
-      if (!failed && (code === 0 || code === 1)) resolve(matches);
+      if (!failed && (code === 0 || code === 1 || matches.length === resultLimit)) resolve(matches);
       else reject(new Error("fzf could not search the history."));
     });
     child.stdin.end(input);
