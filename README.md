@@ -1,10 +1,10 @@
 # Shell History
 
-Search your shell history in Raycast with fzf. The **Current Input** row starts selected and represents the text in the search bar. **Return** opens that text in an editable fish prompt. **⌘ Return** runs it.
+Search your shell history in Raycast. With **Current Input** selected, **Return** runs the text and shows its output in Raycast. Use **⌘ Return** to run it in your terminal, including commands that need interactive input.
 
 Press **Ctrl+B** to select the first history result. From a history result, **Return** completes it into the search bar and **⌘ Return** runs it directly. Commands containing line breaks open a multiline editor when completed. Clear the bar to start another search.
 
-With fish as the execution shell, commands run through the interactive prompt and follow fish's regular history settings. Preloading an editable prompt requires fish. Ghostty 1.3 or newer uses its built-in AppleScript API. macOS may ask you to allow Raycast to control Ghostty on the first launch.
+When you run a command in your terminal with fish, it follows fish's usual history settings. Ghostty 1.3 or newer may require a one-time macOS permission to let Raycast open a window.
 
 Commands launched from the extension are remembered locally in Raycast. Recent commands that match your search appear first, newest first. Commands starting with a space are omitted from this list, following fish's history convention.
 

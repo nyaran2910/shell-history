@@ -3,6 +3,7 @@ import {
   closeMainWindow, getPreferenceValues, openExtensionPreferences, showToast,
 } from "@raycast/api";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CommandOutput } from "./command-output";
 import { findFzf, resultLimit, searchHistory } from "./fzf";
 import { historyFile, loadHistory } from "./history";
 import { readRecent, recentKey, rememberRun } from "./recent";
@@ -140,22 +141,25 @@ export default function SearchShellHistory() {
   const commands = search ? result?.commands ?? inputs?.initial : inputs?.initial;
   const loading = !error && !editing && (!inputs || Boolean(inputs.initial.length && search && !current));
 
-  async function openCommand(command: string, execute: boolean) {
+  function recordRun(command: string) {
+    if (!history || command.startsWith(" ")) return;
+    return rememberRun(history.recentKey, command).then(setRecent).catch((error: unknown) => {
+      console.error("Could not save the recently run command", error);
+    });
+  }
+
+  async function openCommand(command: string) {
     if (running.current || !command.trim()) return false;
     running.current = true;
     try {
-      await openInTerminal(command, execute, history?.shellPath, history?.terminalApp);
+      await openInTerminal(command, history?.shellPath, history?.terminalApp);
     } catch (error) {
       running.current = false;
       await showToast({ style: Toast.Style.Failure, title: "Could Not Open Command", message: (error as Error).message });
       return false;
     }
     try {
-      if (execute && history && !command.startsWith(" ")) {
-        await rememberRun(history.recentKey, command).then(setRecent).catch((error: unknown) => {
-          console.error("Could not save the recently run command", error);
-        });
-      }
+      await recordRun(command);
       setDraft(undefined);
       setSelectedId(inputId);
       await closeMainWindow();
@@ -193,8 +197,8 @@ export default function SearchShellHistory() {
           <ActionPanel>
             {text.trim() && (
               <>
-                <Action title="Open in Terminal" icon={Icon.Terminal} onAction={() => openCommand(text, false)} />
-                <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => openCommand(text, true)} />
+                <Action.Push title="Run in Raycast" icon={Icon.Play} target={<CommandOutput command={text} shell={history?.shellPath} onStarted={() => { void recordRun(text); }} />} />
+                <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => openCommand(text)} />
               </>
             )}
             {firstHistoryId && (
@@ -213,14 +217,14 @@ export default function SearchShellHistory() {
           actions={
             <ActionPanel>
               {multiline ? (
-                <Action.Push title="Edit Multiline Command" icon={Icon.Pencil} target={<EditMultilineCommand command={command} run={(text) => openCommand(text, true)} />} />
+                <Action.Push title="Edit Multiline Command" icon={Icon.Pencil} target={<EditMultilineCommand command={command} run={openCommand} />} />
               ) : (
                 <Action title="Complete Command" icon={Icon.Pencil} onAction={() => {
                   setDraft(command);
                   setSelectedId(inputId);
                 }} />
               )}
-              <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => openCommand(command, true)} />
+              <Action title="Run in Terminal" icon={Icon.Terminal} shortcut={runShortcut} onAction={() => openCommand(command)} />
             </ActionPanel>
           }
         />

@@ -1,11 +1,10 @@
 import { getDefaultApplication } from "@raycast/api";
 import { execFile } from "node:child_process";
-import { constants } from "node:fs";
-import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir, userInfo } from "node:os";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { absolutePath } from "./settings";
+import { executionShell } from "./command";
 
 const exec = promisify(execFile);
 const ghosttyBundleId = "com.mitchellh.ghostty";
@@ -38,22 +37,12 @@ async function openGhostty(script: string) {
 
 export async function openInTerminal(
   command: string,
-  execute: boolean,
   shellPreference?: string,
   terminalApp = "system",
 ) {
-  if (!command.trim() || command.includes("\0")) throw new Error("Enter a valid shell command.");
-  const shell = shellPreference ? absolutePath(shellPreference, "Execution Shell") : userInfo().shell;
-  if (!shell) throw new Error("Set an Execution Shell in preferences.");
-  await access(shell, constants.X_OK).catch(() => {
-    throw new Error("The execution shell is not executable.");
-  });
-
+  const shell = await executionShell(command, shellPreference);
   const fish = await exec(shell, ["-c", "builtin status fish-path"], { timeout: 3000 })
     .then(() => true, () => false);
-  if (!fish && !execute) {
-    throw new Error("Set Execution Shell to fish to open a command for editing.");
-  }
 
   // Let fish's interactive reader handle the command, including its normal history rules.
   const init = [
@@ -61,7 +50,7 @@ export async function openInTerminal(
     "  functions --erase __raycast_shell_history_prefill",
     '  commandline --replace -- "$RAYCAST_SHELL_HISTORY_COMMAND"',
     "  set --erase RAYCAST_SHELL_HISTORY_COMMAND",
-    execute ? "  commandline --function execute" : "",
+    "  commandline --function execute",
     "end",
   ].join("\n");
   const launch = fish
